@@ -1,5 +1,5 @@
-#include "file.h"
-#include "lpf.h"
+#include "wav.h"
+#include "filter.h"
 
 int main(){
     
