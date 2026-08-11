@@ -6,7 +6,13 @@
 <p align="center">A minimal audio processing library for WAV files</p>
 
 ## Requirements:
-Compiler: GCC
+- GCC
+- Python3
+- nava
+
+## Usage
+### Volume and Gain
+Ripple uses two scales the logarithmic (dB) scale and a linear (0-100%) scale, providing conversions between the two scales. It is recommended to use the API functions that work on the linear volume scale, as it is simpler and more intuitive. However  .
 
 ## System Architecture
 
