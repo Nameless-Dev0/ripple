@@ -90,5 +90,6 @@ dkms.conf
 # Ignore build artifacts
 build/
 
-# Progress Tracker
-progress.md
+# python
+.env/
+.venv/
