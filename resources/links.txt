@@ -1,2 +1,0 @@
-https://learn.microsoft.com/en-us/windows/win32/multimedia/resource-interchange-file-format-services
-https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat/
