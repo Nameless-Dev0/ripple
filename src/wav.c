@@ -144,6 +144,7 @@ void wav_info(const wav_t* wav){
     else{
         printf("AUDIO_FORMAT: %d (UNKNOWN) \n", wav->audio_format);
     }
+
     switch (wav->num_channels){
     case 1:
         printf("NUMBER OF CHANNELS: (mono) \n");
@@ -159,8 +160,6 @@ void wav_info(const wav_t* wav){
         break;
     }
 
-
-
     printf("SAMPLE RATE: %d\n", wav->sample_rate);
     printf("BYTE RATE: %d\n", wav->byte_rate);
     printf("BLOCK ALIGN: %d\n", wav->block_align);
@@ -174,19 +173,47 @@ void wav_info(const wav_t* wav){
 
 
 wav_status_t release_wav(wav_t* wav){
-    if(!wav){
-        return WAV_ERROR_NULL_POINTER;
-    }
-    if(!(wav->data)){
-        return WAV_ERROR_NULL_DATA;
-    }
+    if(!wav)
+        return WAV_ERR_NULL_POINTER;
+    if(!(wav->data))
+        return WAV_ERR_NULL_DATA;
+
     free(wav->data);
     free(wav);
     return WAV_SUCCESS;
 }
 
-/*
-wav_status_t export_wav(const wav_t* wav, FILE* out_file){
-    // TODO
+wav_status_t export_wav(const wav_t* wav){
+    if(!wav)
+        return WAV_ERR_NULL_POINTER;
+    if(!(wav->data))
+        return WAV_ERR_NULL_DATA;
+
+    FILE* out = fopen("processed_audio.wav", "wb");
+    if(!out){
+        return WAV_EXPORT_ERR;
+    }
+
+    /* RIFF HEADER */
+    fwrite(&(wav->chunk_id),    sizeof(wav->chunk_id), 1, out);
+    fwrite(&(wav->chunk_size),  sizeof(wav->chunk_size), 1, out);
+    fwrite(&(wav->format),      sizeof(wav->format), 1, out);
+
+    /* FMT HEADER */
+    fwrite(&(wav->sub_chunk1_id),   sizeof(wav->sub_chunk1_id), 1, out);
+    fwrite(&(wav->sub_chunk1_size), sizeof(wav->sub_chunk1_size), 1, out);
+    fwrite(&(wav->audio_format),    sizeof(wav->audio_format), 1, out);
+    fwrite(&(wav->num_channels),    sizeof(wav->num_channels), 1, out);
+    fwrite(&(wav->sample_rate),     sizeof(wav->sample_rate), 1, out);
+    fwrite(&(wav->byte_rate),       sizeof(wav->byte_rate), 1, out);
+    fwrite(&(wav->block_align),     sizeof(wav->block_align), 1, out);
+    fwrite(&(wav->bit_depth),       sizeof(wav->bit_depth), 1, out);
+
+    /* DATA HEADER */
+    fwrite(&(wav->sub_chunk2_id),   sizeof(wav->sub_chunk2_id), 1, out);
+    fwrite(&(wav->sub_chunk2_size), sizeof(wav->sub_chunk2_size), 1, out);
+    fwrite(wav->data, 1, wav->sub_chunk2_size, out);  
+
+    fclose(out);
+    return WAV_SUCCESS;
 }
-*/
