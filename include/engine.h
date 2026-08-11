@@ -1,20 +1,16 @@
-#ifndef FILTER_H
-#define FILTER_H
+#ifndef ENGINE_H
+#define ENGINE_H
 #include <stdio.h>
 
-/* struct containing parsed wav file pointed to by a FILE* handle */
-typedef struct wav_s wav_t;
+#ifndef TARGET_NORM_RMS
+    #define TARGET_NORM_RMS -14 /* Change preceived loudness (dBFS) for normalization */ 
+#endif
 
-/* Apply constant positive (+) gain (in dB) to entire audio signal */
-void gain(wav_t* wav);
+typedef struct wav_s wav_t; /* struct containing parsed wav file pointed to by a FILE* handle */
 
-/* Apply constant negative (-) gain (in dB) to entire audio signal */
-void attenuate(wav_t* wav);
+void gain(wav_t* wav, float gain_dB);    /* Applys constant gain (in dB) to entire audio signal */
+void normalize_audio(wav_t* wav);        /* Applys constant gain (in dB) based on RMS (i.e., preceived loudness) */
+void lpf(wav_t* wav, float cutoff_freq); /* Cuts off frequencies (in Hz) above cutoff_freq */
+void hpf(wav_t* wav, float cutoff_freq); /* Cuts off frequencies (in Hz) below cutoff_freq */
 
-/* Pass only frequencies (in Hz) up to cutoff_freq */
-void lpf(wav_t* wav, float cutoff_freq);
-
-/* Pass only frequencies (in Hz) above cutoff_freq */
-void hpf(wav_t* wav, float cutoff_freq);
-
-#endif /* FILTER_H */
+#endif /* ENGINE_H */
