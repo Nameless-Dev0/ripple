@@ -4,20 +4,67 @@
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>
-#include <ctype.h>
+#include <stdbool.h>
 #include "wav.h"
 
-static inline void bytes_to_ascii(uint32_t src, char dest[5]);  /* Converts raw bytes (src) into an ASCII string (dest) */
-static inline uint32_t read_be32(const uint8_t *p);             /* Converts host 32-bit integer to big endian representation */
-static inline uint32_t read_le32(const uint8_t *p);             /* Converts host 32-bit integer to little endian representation */
-static inline uint16_t read_le16(const uint8_t *p);             /* Converts host 16-bit integer to little endian representation */
+static inline uint16_t read_le16(const uint8_t* p);  /* Converts host 32-bit integer to big endian    */
+static inline uint32_t read_le32(const uint8_t* p);  /* Converts host 32-bit integer to little endian */
+static inline uint32_t read_be32(const uint8_t* p);  /* Converts host 16-bit integer to little endian */
+static inline void write_le32(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
+static inline void write_le16(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
+
+uint32_t read_be32(const uint8_t* p) {
+    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return *(const uint32_t*)p;
+    #elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+            ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
+    #endif
+}
+
+uint32_t read_le32(const uint8_t* p) {
+    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return *(const uint32_t *)p;
+    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return  (uint32_t)p[0]        | ((uint32_t)p[1] << 8) |
+            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    #endif
+}
+
+uint16_t read_le16(const uint8_t* p) {
+    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return *(const uint16_t *)p;
+    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+#endif
+}
+
+void write_le16(const uint8_t* p, FILE* file) {
+    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        fwrite((const uint16_t*)p, 1, sizeof(uint16_t), file);
+    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        uint16_t le16 = (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+        fwrite(&le16, 1, sizeof(uint16_t), file);
+    #endif
+}
+
+void write_le32(const uint8_t* p, FILE* file) {
+    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        fwrite((const uint32_t*)p, 1, sizeof(uint32_t), file);
+    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        uint32_t le32 = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+        fwrite(&le32, 1, sizeof(uint32_t), file);
+    #endif
+}
 
 typedef struct wav_s{
+    uint16_t durartion; /* In seconds */
+    
     /* canonical wav format fields */
-    uint32_t chunk_id;
+    char chunk_id[5];
     uint32_t chunk_size;
-    uint32_t format;
-    uint32_t sub_chunk1_id;
+    char format[5];
+    char sub_chunk1_id[5];
     uint32_t sub_chunk1_size;
     uint16_t audio_format;
     uint16_t num_channels;
@@ -25,34 +72,11 @@ typedef struct wav_s{
     uint32_t byte_rate;
     uint16_t block_align;
     uint16_t bit_depth; /* bits per sample */
-    uint32_t sub_chunk2_id;
+    char sub_chunk2_id[5];
     uint32_t sub_chunk2_size;
     uint8_t* data; /* points to start of audio samples */
 } wav_t;
 
-static inline uint32_t read_be32(const uint8_t *p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-           ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
-}
-static inline uint32_t read_le32(const uint8_t *p) {
-    return  (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-}
-static inline uint16_t read_le16(const uint8_t *p) {
-    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
-}
-
-void bytes_to_ascii(uint32_t src, char dest[5]) {
-    if (!dest) {
-        return;
-    }
-    for (size_t i = 0; i < 4; i++) {
-        uint32_t shift = (3 - i) * 8;
-        unsigned char c = (src >> shift) & 0xFF;
-        dest[i] = isprint(c) ? (char)c : '.';
-    }
-    dest[4] = '\0';
-}
 
 wav_t* load_wav(const char* wav_file){
     FILE* wav_handle = fopen(wav_file, "rb");
@@ -64,7 +88,9 @@ wav_t* load_wav(const char* wav_file){
     wav_t* wav = malloc(sizeof(struct wav_s));
     if(!wav){
         perror("Cannot allocate wav object!");
-        fclose(wav_handle);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
         return NULL;
     }
 
@@ -72,33 +98,51 @@ wav_t* load_wav(const char* wav_file){
     if(sizeof(metadata) != fread(metadata,1, sizeof(metadata), wav_handle)){
         perror("Unable to extract WAV metadata!");
         free(wav);
-        fclose(wav_handle);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
         return NULL;
     }
 
     /* RIFF HEADER */
-    wav->chunk_id        = read_be32(&metadata[0]);
-    wav->chunk_size      = read_le32(&metadata[4]);
-    wav->format          = read_be32(&metadata[8]);
+    memmove(wav->chunk_id, &metadata[0],  4);
+    wav->chunk_size = read_le32(&metadata[4]);
+    memmove(wav->format, &metadata[8],  4);
 
     /* FMT HEADER */
-    wav->sub_chunk1_id    = read_be32(&metadata[12]);
-    wav->sub_chunk1_size  = read_le32(&metadata[16]);
-    wav->audio_format     = read_le16(&metadata[20]);
-    wav->num_channels     = read_le16(&metadata[22]);
-    wav->sample_rate      = read_le32(&metadata[24]);
-    wav->byte_rate        = read_le32(&metadata[28]);
-    wav->block_align      = read_le16(&metadata[32]);
-    wav->bit_depth        = read_le16(&metadata[34]);
+    memmove(wav->sub_chunk1_id,  &metadata[12], 4);
+    wav->sub_chunk1_size= read_le32(&metadata[16]);
+    wav->audio_format=    read_le16(&metadata[20]);
+    wav->num_channels=    read_le16(&metadata[22]);
+    wav->sample_rate=     read_le32(&metadata[24]);
+    wav->byte_rate=       read_le32(&metadata[28]);
+    wav->block_align=     read_le16(&metadata[32]);
+    wav->bit_depth=       read_le16(&metadata[34]);
 
     /* DATA HEADER */
-    wav->sub_chunk2_id    = read_be32(&metadata[36]);
-    wav->sub_chunk2_size  = read_le32(&metadata[40]);
+    memmove(wav->sub_chunk2_id, &metadata[36], 4);
+    wav->sub_chunk2_size = read_le32(&metadata[40]);
+
+    wav->chunk_id[4] = '\0';
+    wav->format[4] = '\0';
+    wav->sub_chunk1_id[4] = '\0';
+    wav->sub_chunk2_id[4] = '\0';
+
+    if(is_valid_wav(wav) == false){
+        free(wav);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
+        fprintf(stderr, "Failed to load... invalid WAV file!");
+        return NULL;
+    }
 
     if((wav->sub_chunk2_size) > MAX_FILE_SIZE){
         fprintf(stderr, "File size exceeds maximum allowed size!");
         free(wav);
-        fclose(wav_handle);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
         return NULL;
     }
 
@@ -106,7 +150,9 @@ wav_t* load_wav(const char* wav_file){
     if(!(wav->data)){
         perror("Cannot allocate wav buffer object!");
         free(wav);
-        fclose(wav_handle);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
         return NULL;
     }
 
@@ -115,37 +161,58 @@ wav_t* load_wav(const char* wav_file){
         fprintf(stderr, "Cannot read audio data!");
         free(wav->data);
         free(wav);
-        fclose(wav_handle);
+        if(fclose(wav_handle) == EOF){
+            perror("Load failed to close file!");
+        }
         return NULL;
     }
 
-    fclose(wav_handle);
+    wav->durartion = (wav->sub_chunk2_size)/(wav->byte_rate);
+
+    if(fclose(wav_handle) == EOF){
+        perror("Load failed to close file!");
+        release_wav(wav);
+        return NULL;
+    }
+
     return wav;
 }
 
-void wav_info(const wav_t* wav){
-    if(!wav){ return; }
-    char ascii[5];
+/* Note: A WAV file with valid metadata but no acutal data is still valid */
+bool is_valid_wav(const wav_t* wav){
+    if (wav == NULL) {
+        return false;
+    }
+    bool fourccs_valid = (memcmp(wav->chunk_id, "RIFF", 4) == 0) &&
+                         (memcmp(wav->format, "WAVE", 4) == 0) &&
+                         (memcmp(wav->sub_chunk1_id, "fmt ", 4) == 0) &&
+                         (memcmp(wav->sub_chunk2_id, "data", 4) == 0);
+    bool is_PCM = wav->audio_format == 1 && wav->sub_chunk1_size == 16;
+
+
+    return fourccs_valid && is_PCM;
+}
+
+void wav_info(const wav_t* wav) {
+    if (!wav){ 
+        return;
+    }
 
     printf("--RIFF HEADER-- \n");
-    bytes_to_ascii(wav->chunk_id, ascii);
-    printf("CHUNK_ID: %s\n", ascii);
-    printf("CHUNK_SIZE: %d\n", wav->format);
-    bytes_to_ascii(wav->format, ascii);
-    printf("FORMAT: %s\n\n", ascii);
+    printf("CHUNK_ID: %s\n", wav->chunk_id);
+    printf("CHUNK_SIZE: %u\n", wav->chunk_size);
+    printf("FORMAT: %s\n\n", wav->format);
 
     printf("--FMT HEADER-- \n");
-    bytes_to_ascii(wav->sub_chunk1_id, ascii);
-    printf("SUB_CHUNK1_ID: %s\n", ascii);
-    printf("SUB_CHUNK1_SIZE (in bytes): %d\n", (wav->sub_chunk1_size));
-    if((wav->audio_format) == 1){
+    printf("SUB_CHUNK1_ID: %s\n", wav->sub_chunk1_id);
+    printf("SUB_CHUNK1_SIZE (in bytes): %u\n", wav->sub_chunk1_size);
+    if (wav->audio_format == 1) {
         printf("AUDIO_FORMAT: PCM \n");
-    }
-    else{
-        printf("AUDIO_FORMAT: %d (UNKNOWN) \n", wav->audio_format);
+    } else {
+        printf("AUDIO_FORMAT: %u (UNKNOWN) \n", wav->audio_format);
     }
 
-    switch (wav->num_channels){
+    switch (wav->num_channels) {
     case 1:
         printf("NUMBER OF CHANNELS: (mono) \n");
         break;
@@ -156,64 +223,74 @@ void wav_info(const wav_t* wav){
         printf("NUMBER OF CHANNELS: (LCR) \n");
         break;
     default:
-        printf("NUMBER OF CHANNELS: %d\n", wav->num_channels);
+        printf("NUMBER OF CHANNELS: %u\n", wav->num_channels);
         break;
     }
 
-    printf("SAMPLE RATE: %d\n", wav->sample_rate);
-    printf("BYTE RATE: %d\n", wav->byte_rate);
-    printf("BLOCK ALIGN: %d\n", wav->block_align);
-    printf("BIT DEPTH: %d\n\n", wav->bit_depth);
+    printf("SAMPLE RATE: %u\n", wav->sample_rate);
+    printf("BYTE RATE: %u\n", wav->byte_rate);
+    printf("BLOCK ALIGN: %u\n", wav->block_align);
+    printf("BIT DEPTH: %u\n\n", wav->bit_depth);
 
     printf("--DATA HEADER-- \n");
-    bytes_to_ascii(wav->sub_chunk2_id, ascii);
-    printf("SUB_CHUNK2_ID: %s\n", ascii);
-    printf("DATA SIZE (in KB): %d\n", ((wav->sub_chunk2_size)/1024) );
+    printf("SUB_CHUNK2_ID: %s\n", wav->sub_chunk2_id);
+    printf("DATA SIZE: %.2f MB\n", (wav->sub_chunk2_size)/(float)(1024*1024));
+    printf("DURATION: %d s\n\n", (wav->durartion));
 }
 
-
 wav_status_t release_wav(wav_t* wav){
-    if(!wav)
-        return WAV_ERR_NULL_POINTER;
-    if(!(wav->data))
-        return WAV_ERR_NULL_DATA;
+    if(!wav){
+        return WAV_NULL_POINTER;
+    }
+    if(!(wav->data)){
+        free(wav);
+        return WAV_NULL_DATA;
+    }
 
     free(wav->data);
     free(wav);
     return WAV_SUCCESS;
 }
 
-wav_status_t export_wav(const wav_t* wav){
-    if(!wav)
-        return WAV_ERR_NULL_POINTER;
-    if(!(wav->data))
-        return WAV_ERR_NULL_DATA;
+wav_status_t export_wav(const wav_t* wav, const char* file_path){
+    if(!wav){
+        return WAV_NULL_POINTER;
+    }
+    if(!(wav->data)){
+        return WAV_NULL_DATA;
+    }
+    if(!(file_path)){
+        return WAV_INVALID_EXPORT_PATH;
+    }
 
-    FILE* out = fopen("processed_audio.wav", "wb");
+    FILE* out = fopen("file_path", "wb");
     if(!out){
         return WAV_EXPORT_ERR;
     }
 
     /* RIFF HEADER */
-    fwrite(&(wav->chunk_id),    sizeof(wav->chunk_id), 1, out);
-    fwrite(&(wav->chunk_size),  sizeof(wav->chunk_size), 1, out);
-    fwrite(&(wav->format),      sizeof(wav->format), 1, out);
+    fwrite(&(wav->chunk_id),    sizeof(wav->chunk_id)-1, 1, out);
+    write_le32((uint8_t*)&(wav->chunk_size), out);
+    fwrite(&(wav->format),      sizeof(wav->format)-1, 1, out);
 
     /* FMT HEADER */
-    fwrite(&(wav->sub_chunk1_id),   sizeof(wav->sub_chunk1_id), 1, out);
-    fwrite(&(wav->sub_chunk1_size), sizeof(wav->sub_chunk1_size), 1, out);
-    fwrite(&(wav->audio_format),    sizeof(wav->audio_format), 1, out);
-    fwrite(&(wav->num_channels),    sizeof(wav->num_channels), 1, out);
-    fwrite(&(wav->sample_rate),     sizeof(wav->sample_rate), 1, out);
-    fwrite(&(wav->byte_rate),       sizeof(wav->byte_rate), 1, out);
-    fwrite(&(wav->block_align),     sizeof(wav->block_align), 1, out);
-    fwrite(&(wav->bit_depth),       sizeof(wav->bit_depth), 1, out);
+    fwrite(&(wav->sub_chunk1_id),   sizeof(wav->sub_chunk1_id)-1, 1, out);
+    write_le32((uint8_t*)&(wav->sub_chunk1_size), out);
+    write_le16((uint8_t*)&(wav->audio_format), out);
+    write_le16((uint8_t*)&(wav->num_channels), out);
+    write_le32((uint8_t*)&(wav->sample_rate), out);
+    write_le32((uint8_t*)&(wav->byte_rate), out);
+    write_le16((uint8_t*)&(wav->block_align), out);
+    write_le16((uint8_t*)&(wav->bit_depth), out);
 
     /* DATA HEADER */
-    fwrite(&(wav->sub_chunk2_id),   sizeof(wav->sub_chunk2_id), 1, out);
-    fwrite(&(wav->sub_chunk2_size), sizeof(wav->sub_chunk2_size), 1, out);
-    fwrite(wav->data, 1, wav->sub_chunk2_size, out);  
+    fwrite(&(wav->sub_chunk2_id),   sizeof(wav->sub_chunk2_id)-1, 1, out);
+    write_le32((uint8_t*)&(wav->sub_chunk2_size), out);
+    fwrite(wav->data, 1, wav->sub_chunk2_size, out);
 
-    fclose(out);
+    if(fclose(out) == EOF){
+        perror("Export failed to close output file!");
+        return WAV_EXPORT_ERR;
+    }
     return WAV_SUCCESS;
 }
