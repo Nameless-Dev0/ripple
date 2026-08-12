@@ -1,6 +1,8 @@
 #ifndef WAV_H
 #define WAV_H
 
+#include <stdbool.h>
+
 #define MAX_FILE_SIZE 524288000 /* 500 MB */
 
 typedef struct wav_s wav_t;
@@ -13,6 +15,7 @@ typedef enum {
     WAV_EXPORT_ERR
 } wav_status_t;
 
+/* Note load_wav calls is_valid_wav by default */
 wav_t* load_wav(const char* wav_file);    /* Loads a WAV file and returns a handle to a WAV struct */
 bool is_valid_wav(const wav_t* wav);      /* Checks if parsed file is a valid WAV file              */
 void wav_info(const wav_t* wav);          /* Displays metadata information of the passed wav       */
