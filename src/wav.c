@@ -7,24 +7,16 @@
 #include <stdbool.h>
 #include "wav.h"
 
-static inline uint16_t read_le16(const uint8_t* p);  /* Converts host 32-bit integer to big endian    */
+static inline uint16_t read_le16(const uint8_t* p);  /* Converts host 16-bit integer to little endian    */
 static inline uint32_t read_le32(const uint8_t* p);  /* Converts host 32-bit integer to little endian */
-static inline uint32_t read_be32(const uint8_t* p);  /* Converts host 16-bit integer to little endian */
 static inline void write_le32(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
 static inline void write_le16(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
 
-uint32_t read_be32(const uint8_t* p) {
-    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        return *(const uint32_t*)p;
-    #elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-            ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
-    #endif
-}
-
 uint32_t read_le32(const uint8_t* p) {
     #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        return *(const uint32_t *)p;
+        uint32_t val;
+        memcpy(&val, p, sizeof(val));
+        return val;
     #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         return  (uint32_t)p[0]        | ((uint32_t)p[1] << 8) |
             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
@@ -33,7 +25,9 @@ uint32_t read_le32(const uint8_t* p) {
 
 uint16_t read_le16(const uint8_t* p) {
     #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        return *(const uint16_t *)p;
+        uint16_t val;
+        memcpy(&val, p, sizeof(val));
+        return val;
     #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 #endif
@@ -79,6 +73,10 @@ typedef struct wav_s{
 
 
 wav_t* load_wav(const char* wav_file){
+    if(!wav_file){
+        fprintf(stderr, "Failed to load... file does not exist!");
+        return NULL;
+    }
     FILE* wav_handle = fopen(wav_file, "rb");
     if(!wav_handle){
         perror("Cannot open file!");
@@ -146,8 +144,8 @@ wav_t* load_wav(const char* wav_file){
         return NULL;
     }
 
-    wav->data = malloc(wav->sub_chunk2_size);
-    if(!(wav->data)){
+    wav->data = NULL;
+    if(wav->sub_chunk2_size != 0 && !(wav->data = malloc(wav->sub_chunk2_size))){
         perror("Cannot allocate wav buffer object!");
         free(wav);
         if(fclose(wav_handle) == EOF){
@@ -155,6 +153,7 @@ wav_t* load_wav(const char* wav_file){
         }
         return NULL;
     }
+
 
     fseek(wav_handle, 44, SEEK_SET);
     if(wav->sub_chunk2_size != fread(wav->data,1, wav->sub_chunk2_size, wav_handle)){
@@ -183,14 +182,29 @@ bool is_valid_wav(const wav_t* wav){
     if (wav == NULL) {
         return false;
     }
-    bool fourccs_valid = (memcmp(wav->chunk_id, "RIFF", 4) == 0) &&
-                         (memcmp(wav->format, "WAVE", 4) == 0) &&
-                         (memcmp(wav->sub_chunk1_id, "fmt ", 4) == 0) &&
-                         (memcmp(wav->sub_chunk2_id, "data", 4) == 0);
-    bool is_PCM = wav->audio_format == 1 && wav->sub_chunk1_size == 16;
+    if(wav->audio_format != 1 || wav->sub_chunk1_size != 16){
+        return false;
+    }
+    if(wav->num_channels == 0 || wav->num_channels > 256 ||
+       wav->bit_depth == 0    || wav->bit_depth > 64     ||
+       wav->sample_rate == 0 || (wav->bit_depth % 8 != 0)) {
+        return false;
+    }
+    if((memcmp(wav->chunk_id, "RIFF", 4) != 0)      ||
+       (memcmp(wav->format, "WAVE", 4)   != 0)      ||
+       (memcmp(wav->sub_chunk1_id, "fmt ", 4) != 0) ||
+       (memcmp(wav->sub_chunk2_id, "data", 4) != 0)){
+        return false;
+    }
+    uint64_t expected_block_align = ((uint64_t)wav->num_channels * wav->bit_depth) / 8;
+    uint64_t expected_byte_rate   = (uint64_t)wav->sample_rate * expected_block_align;
 
+    if (wav->block_align != expected_block_align ||
+        wav->byte_rate != expected_byte_rate) {
+        return false;
+    }
 
-    return fourccs_valid && is_PCM;
+    return true;
 }
 
 void wav_info(const wav_t* wav) {
@@ -244,7 +258,8 @@ wav_status_t release_wav(wav_t* wav){
     }
     if(!(wav->data)){
         free(wav);
-        return WAV_NULL_DATA;
+        fprintf(stderr, "[WARNING] freed wav file has no data!");
+        return WAV_SUCCESS;
     }
 
     free(wav->data);
@@ -256,14 +271,11 @@ wav_status_t export_wav(const wav_t* wav, const char* file_path){
     if(!wav){
         return WAV_NULL_POINTER;
     }
-    if(!(wav->data)){
-        return WAV_NULL_DATA;
-    }
     if(!(file_path)){
         return WAV_INVALID_EXPORT_PATH;
     }
 
-    FILE* out = fopen("file_path", "wb");
+    FILE* out = fopen(file_path, "wb");
     if(!out){
         return WAV_EXPORT_ERR;
     }
@@ -286,7 +298,12 @@ wav_status_t export_wav(const wav_t* wav, const char* file_path){
     /* DATA HEADER */
     fwrite(&(wav->sub_chunk2_id),   sizeof(wav->sub_chunk2_id)-1, 1, out);
     write_le32((uint8_t*)&(wav->sub_chunk2_size), out);
-    fwrite(wav->data, 1, wav->sub_chunk2_size, out);
+    if(!(wav->data)){
+        fprintf(stderr, "[WARNING] exporting file with no audio data!");
+    }
+    else{
+        fwrite(wav->data, 1, wav->sub_chunk2_size, out);
+    }
 
     if(fclose(out) == EOF){
         perror("Export failed to close output file!");
