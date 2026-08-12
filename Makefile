@@ -4,7 +4,7 @@ CFLAGS_B = -g -O0 -Wall -Wextra -Iinclude -Iext
 LDFLAGS = -lm -fsanitize=address
 
 SRC_DIR = src
-EXT_DIR = ext
+EXT_DIR = external
 BUILD_DIR = build
 BIN_DIR = $(BUILD_DIR)/bin
 
