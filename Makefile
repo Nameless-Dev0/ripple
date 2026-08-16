@@ -43,3 +43,4 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -rf demo/audio/output.wav
