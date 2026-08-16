@@ -1,112 +1,71 @@
-#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include "wav.h"
+#include "wav_internal.h"
 
-static inline uint16_t read_le16(const uint8_t* p);  /* Converts host 16-bit integer to little endian    */
-static inline uint32_t read_le32(const uint8_t* p);  /* Converts host 32-bit integer to little endian */
-static inline void write_le32(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
-static inline void write_le16(const uint8_t *p, FILE* file);  /* Writes to 16-bit integer to file in little endian */ 
+void get_err_msg(wav_status_t status, char* dest_buf, size_t dest_size){
+    if(!dest_buf || dest_size < WAV_ERR_MSG_MIN){
+        return;
+    }
 
-uint32_t read_le32(const uint8_t* p) {
-    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        uint32_t val;
-        memcpy(&val, p, sizeof(val));
-        return val;
-    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        return  (uint32_t)p[0]        | ((uint32_t)p[1] << 8) |
-            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-    #endif
+    const char* msg;
+    switch (status){
+        case WAV_SUCCESS: msg = "Success"; break;
+        case WAV_NULL_POINTER: msg = "Null pointer passed"; break;
+        case WAV_NULL_DATA: msg = "WAV has no audio data"; break;
+        case WAV_INVALID_PATH_ERR: msg = "Invalid or empty file path"; break;
+        case WAV_FILE_OPEN_ERR: msg = "Failed to open file"; break;
+        case WAV_FILE_READ_ERR: msg = "Failed to read file"; break;
+        case WAV_INVALID_FORMAT: msg = "Invalid or malformed WAV format"; break;
+        case WAV_FILE_TOO_LARGE: msg = "File exceeds maximum allowed size"; break;
+        case WAV_ALLOC_ERR: msg = "Memory allocation failed"; break;
+        case WAV_INVALID_EXPORT_PATH: msg = "Invalid export file path"; break;
+        case WAV_EXPORT_ERR: msg = "Failed to export WAV file"; break;
+        case WAV_FILE_CLOSE_ERR: msg = "Failed to close file"; break;
+        default: msg = "Unknown error"; break;
+    }
+
+    snprintf(dest_buf, dest_size, "%s", msg);
 }
 
-uint16_t read_le16(const uint8_t* p) {
-    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        uint16_t val;
-        memcpy(&val, p, sizeof(val));
-        return val;
-    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
-#endif
+static inline void set_status(wav_status_t* out_status, wav_status_t status){
+    if(out_status){
+        *out_status = status;
+    }
 }
 
-void write_le16(const uint8_t* p, FILE* file) {
-    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        fwrite((const uint16_t*)p, 1, sizeof(uint16_t), file);
-    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        uint16_t le16 = (uint16_t)p[0] | ((uint16_t)p[1] << 8);
-        fwrite(&le16, 1, sizeof(uint16_t), file);
-    #endif
-}
-
-void write_le32(const uint8_t* p, FILE* file) {
-    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        fwrite((const uint32_t*)p, 1, sizeof(uint32_t), file);
-    #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        uint32_t le32 = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-        fwrite(&le32, 1, sizeof(uint32_t), file);
-    #endif
-}
-
-typedef struct wav_s{
-    uint16_t durartion; /* In seconds */
-    
-    /* canonical wav format fields */
-    char chunk_id[5];
-    uint32_t chunk_size;
-    char format[5];
-    char sub_chunk1_id[5];
-    uint32_t sub_chunk1_size;
-    uint16_t audio_format;
-    uint16_t num_channels;
-    uint32_t sample_rate;
-    uint32_t byte_rate;
-    uint16_t block_align;
-    uint16_t bit_depth; /* bits per sample */
-    char sub_chunk2_id[5];
-    uint32_t sub_chunk2_size;
-    uint8_t* data; /* points to start of audio samples */
-} wav_t;
-
-
-wav_t* load_wav(const char* wav_file){
+wav_t* load_wav(const char* wav_file, wav_status_t* status){
     if(!wav_file){
-        fprintf(stderr, "Failed to load... file does not exist!");
+        set_status(status, WAV_INVALID_PATH_ERR);
         return NULL;
     }
     FILE* wav_handle = fopen(wav_file, "rb");
     if(!wav_handle){
-        perror("Cannot open file!");
+        set_status(status, WAV_FILE_OPEN_ERR);
         return NULL;
     }
-
     wav_t* wav = malloc(sizeof(struct wav_s));
     if(!wav){
-        perror("Cannot allocate wav object!");
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
+        set_status(status, WAV_ALLOC_ERR);
+        fclose(wav_handle);
         return NULL;
     }
-
     uint8_t metadata[44];
     if(sizeof(metadata) != fread(metadata,1, sizeof(metadata), wav_handle)){
-        perror("Unable to extract WAV metadata!");
+        set_status(status, WAV_FILE_READ_ERR);
         free(wav);
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
+        fclose(wav_handle);
         return NULL;
     }
-
     /* RIFF HEADER */
     memmove(wav->chunk_id, &metadata[0],  4);
     wav->chunk_size = read_le32(&metadata[4]);
     memmove(wav->format, &metadata[8],  4);
-
     /* FMT HEADER */
     memmove(wav->sub_chunk1_id,  &metadata[12], 4);
     wav->sub_chunk1_size= read_le32(&metadata[16]);
@@ -116,64 +75,53 @@ wav_t* load_wav(const char* wav_file){
     wav->byte_rate=       read_le32(&metadata[28]);
     wav->block_align=     read_le16(&metadata[32]);
     wav->bit_depth=       read_le16(&metadata[34]);
-
     /* DATA HEADER */
     memmove(wav->sub_chunk2_id, &metadata[36], 4);
     wav->sub_chunk2_size = read_le32(&metadata[40]);
-
     wav->chunk_id[4] = '\0';
     wav->format[4] = '\0';
     wav->sub_chunk1_id[4] = '\0';
     wav->sub_chunk2_id[4] = '\0';
-
     if(is_valid_wav(wav) == false){
+        set_status(status, WAV_INVALID_FORMAT);
         free(wav);
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
-        fprintf(stderr, "Failed to load... invalid WAV file!");
+        fclose(wav_handle);
         return NULL;
     }
-
     if((wav->sub_chunk2_size) > MAX_FILE_SIZE){
-        fprintf(stderr, "File size exceeds maximum allowed size!");
+        set_status(status, WAV_FILE_TOO_LARGE);
         free(wav);
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
+        fclose(wav_handle);
         return NULL;
     }
-
     wav->data = NULL;
     if(wav->sub_chunk2_size != 0 && !(wav->data = malloc(wav->sub_chunk2_size))){
-        perror("Cannot allocate wav buffer object!");
+        set_status(status, WAV_ALLOC_ERR);
         free(wav);
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
+        fclose(wav_handle);
         return NULL;
     }
-
-
-    fseek(wav_handle, 44, SEEK_SET);
-    if(wav->sub_chunk2_size != fread(wav->data,1, wav->sub_chunk2_size, wav_handle)){
-        fprintf(stderr, "Cannot read audio data!");
+    if(fseek(wav_handle, sizeof(metadata), SEEK_SET) != 0){
+        set_status(status, WAV_FILE_READ_ERR);
         free(wav->data);
         free(wav);
-        if(fclose(wav_handle) == EOF){
-            perror("Load failed to close file!");
-        }
+        fclose(wav_handle);
         return NULL;
     }
-
-    wav->durartion = (wav->sub_chunk2_size)/(wav->byte_rate);
-
+    if(wav->sub_chunk2_size > 0 && fread(wav->data,1, wav->sub_chunk2_size, wav_handle) != wav->sub_chunk2_size){
+        set_status(status, WAV_FILE_READ_ERR);
+        free(wav->data);
+        free(wav);
+        fclose(wav_handle);
+        return NULL;
+    }
+    wav->duration = (wav->sub_chunk2_size)/(wav->byte_rate);
     if(fclose(wav_handle) == EOF){
-        perror("Load failed to close file!");
+        set_status(status, WAV_FILE_CLOSE_ERR);
         release_wav(wav);
         return NULL;
     }
-
+    set_status(status, WAV_SUCCESS);
     return wav;
 }
 
@@ -249,7 +197,7 @@ void wav_info(const wav_t* wav) {
     printf("--DATA HEADER-- \n");
     printf("SUB_CHUNK2_ID: %s\n", wav->sub_chunk2_id);
     printf("DATA SIZE: %.2f MB\n", (wav->sub_chunk2_size)/(float)(1024*1024));
-    printf("DURATION: %d s\n\n", (wav->durartion));
+    printf("DURATION: %u s\n\n", (wav->duration));
 }
 
 wav_status_t release_wav(wav_t* wav){
@@ -258,8 +206,7 @@ wav_status_t release_wav(wav_t* wav){
     }
     if(!(wav->data)){
         free(wav);
-        fprintf(stderr, "[WARNING] freed wav file has no data!");
-        return WAV_SUCCESS;
+        return WAV_NULL_DATA;
     }
 
     free(wav->data);
