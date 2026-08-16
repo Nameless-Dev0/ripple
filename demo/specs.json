@@ -1,0 +1,28 @@
+{
+  "pipeline": [
+    {
+      "type": "NORM"
+    },
+
+    {
+      "type": "GAIN",
+      "params": {
+        "gain_dB": 6.0
+      }
+    },
+
+    {
+      "type": "LPF",
+      "params": {
+        "cutoff_freq": 400.0
+      }
+    },
+
+    {
+      "type": "HPF",
+      "params": {
+        "cutoff_freq": 1100.0
+      }
+    }
+    ]
+}
