@@ -10,12 +10,23 @@
 - Python3
 - nava
 
+## Support
+Only PCM WAV files are supported.   
+
 ## Usage
 ### Volume and Gain
-Ripple uses two scales the logarithmic (dB) scale and a linear (0-100%) scale, providing conversions between the two scales. It is recommended to use the API functions that work on the linear volume scale, as it is simpler and more intuitive. However  .
+Ripple uses two scales the logarithmic (dB) scale and a linear (0-100%) scale, providing conversions between the two scales. It is recommended to use the API functions that work on the linear volume scale, as it is simpler and more intuitive.
 
 ## System Architecture
 
 <p align="center">
   <img src="resources/diagrams/exports/ripple_architecture.jpg" alt="Ripple architecture diagram" width="800" style="border-radius: 12px;">
 </p>
+
+### Error Handling Model
+All API functions that perform any operation that can fail send back a status code in one of two ways: a function return or passing a status argument. Note that the latter can be ignored by passing NULL.
+> [!NOTE]
+> Diagnostic/miscellaneous functions do not return error status codes.
+
+## Improvements/TODO:
+- 
