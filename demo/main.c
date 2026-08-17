@@ -10,7 +10,8 @@ int main(){
     export_wav(wav_in, output_path);
 
     wav_t* wav_out = load_wav(output_path, NULL);
-    gain(wav_out, 2);
+    lpf_test(wav_out);
+
     export_wav(wav_out, output_path);
     wav_info(wav_out);
     
