@@ -1,6 +1,5 @@
 CC = gcc
-CFLAGS = -g -fsanitize=address -fno-omit-frame-pointer -O1 -Wall -Werror -Wextra -Iinclude -Iext
-CFLAGS_B = -g -O0 -Wall -Wextra -Iinclude -Iext
+CFLAGS = -g -fsanitize=address -fno-omit-frame-pointer -O2 -Wall -Werror -Wextra -Iinclude -Iext
 LDFLAGS = -lm -fsanitize=address
 
 SRC_DIR = src
