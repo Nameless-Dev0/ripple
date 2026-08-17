@@ -5,23 +5,24 @@
 #include <stdint.h>
 
 typedef struct wav_s{
+    uint8_t* data; /* points to start of audio samples */
+
     uint32_t duration; /* In seconds */
-    
-    /* canonical wav format fields */
-    char chunk_id[5];
     uint32_t chunk_size;
-    char format[5];
-    char sub_chunk1_id[5];
     uint32_t sub_chunk1_size;
-    uint16_t audio_format;
-    uint16_t num_channels;
     uint32_t sample_rate;
     uint32_t byte_rate;
+    uint32_t sub_chunk2_size;
+
+    uint16_t audio_format;
+    uint16_t num_channels;
     uint16_t block_align;
     uint16_t bit_depth; /* bits per sample */
+
+    char chunk_id[5];
+    char format[5];
+    char sub_chunk1_id[5];
     char sub_chunk2_id[5];
-    uint32_t sub_chunk2_size;
-    uint8_t* data; /* points to start of audio samples */
 } wav_t;
 
 uint16_t read_le16(const uint8_t* p);  /* Converts host 16-bit integer to little endian    */
