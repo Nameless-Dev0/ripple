@@ -1,14 +1,25 @@
 #include "engine.h"
+#include "biquad.h"
 
-/*
-static inline float volume_to_dB(float dB); // dB should
-static inline float dB_to_volume(float volume); // Volume is a percentage value (0-100)% 
+void lpf_test(wav_t* wav){
+    /* cutoff at 1024 Hz */
 
-float volume_to_dB(float dB){ 
-    //TODO
+    biquad_t q = {
+        .a1 = -1.962975,
+        .a2 =  0.963648,
+        .b0 =  0.000168,
+        .b1 =  0.000336,
+        .b2 =  0.000168,
+        .w1 = {0},
+        .w2 = {0}
+    };
+    
+    apply_biquad(wav, &q);
 }
-float dB_to_volume(float volume){ 
-    //TODO
-}
 
+/* 
+TODO 
+void lpf(wav_t* wav, float cutoff_freq){
+
+}
 */
