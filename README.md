@@ -7,6 +7,7 @@
 
 ## Requirements:
 - GCC
+- C11
 - Python3
 - nava
 
@@ -27,6 +28,11 @@ Ripple uses two scales the logarithmic (dB) scale and a linear (0-100%) scale, p
 All API functions that perform any operation that can fail send back a status code in one of two ways: a function return or passing a status argument. Note that the latter can be ignored by passing NULL.
 > [!NOTE]
 > Diagnostic/miscellaneous functions do not return error status codes.
+
+### SIMD Optimizations
+The supported SIMD instructions sets: AVX2 only
+[!NOTE]
+> Ripple uses SIMD for vectorizing arithmetic operations only (i.e., no SIMD load or store instructions), thus sample data itself has no alignment requirements.
 
 ## Improvements/TODO:
 - 
