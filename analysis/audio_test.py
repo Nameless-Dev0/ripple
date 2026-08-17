@@ -1,10 +1,12 @@
-import time
-from nava import play, stop
+from utils import playtest, plot_stereo_audio, plot_stereo_spectrogram
 
-original_sound= play("audio/song.wav", async_mode=True, loop=False)
-time.sleep(7)
-stop(original_sound)
+in_path = "demo/audio/input.wav"
+out_path = "demo/audio/output.wav"
 
-processed_sound= play("audio/output.wav", async_mode=True, loop=False)
-time.sleep(7)
-stop(processed_sound)
+'''
+playtest(in_path)
+playtest(out_path)
+'''
+
+plot_stereo_audio(in_path,out_path)
+plot_stereo_spectrogram(in_path, out_path)
