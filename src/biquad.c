@@ -1,8 +1,9 @@
 #include <stdint.h>
+#include <math.h>
+#include <limits.h>
 #include "biquad.h"
 #include "wav.h"
 #include "wav_internal.h"
-
 
 #define PROCESS_BUFFER_MONO(TYPE, WAV, BIQUAD)                   \
     do {                                                         \
@@ -43,7 +44,47 @@
         }                                                                       \
     } while(0)
 
+#define COMPUTE_AVG_POWER(TYPE, WAV, AVG_PWR)                    \
+    do {                                                         \
+        TYPE* x = (TYPE*)(WAV->data);                            \
+        size_t count = (WAV->sub_chunk2_size)/sizeof(TYPE);      \
+        double sum = 0.0;                                        \
+        for (size_t i = 0; i < count; i++) {                     \
+            double x_i = (double)x[i];                           \
+            sum += x_i * x_i;                                    \
+        }                                                        \
+        (AVG_PWR) = count > 0 ? (sum / (double)count) : 0.0;  \
+    } while(0)
+
+#define APPLY_GAIN(TYPE, WAV, GAIN, TMIN, TMAX)                  \
+    do {                                                         \
+        TYPE* x = (TYPE*)(WAV->data);                            \
+        size_t count = (WAV->sub_chunk2_size)/sizeof(TYPE);      \
+        for (size_t i = 0; i < count; i++) {                     \
+            double y = (double)x[i] * (GAIN);                    \
+            if (y > (double)(TMAX)) y = (double)(TMAX);          \
+            if (y < (double)(TMIN)) y = (double)(TMIN);          \
+            x[i] = (TYPE)y;                                      \
+        }                                                        \
+    } while(0)
+
 void apply_biquad(wav_t* wav, biquad_t* biquad) {
+    if(!wav || !biquad){
+        return;
+    }
+
+    if(wav->num_channels > 2){
+        return;
+    }
+
+    double power_in = 0.0;
+        switch (wav->bit_depth) {
+        case 8:  COMPUTE_AVG_POWER(uint8_t, wav, power_in); break;
+        case 16: COMPUTE_AVG_POWER(int16_t, wav, power_in); break;
+        case 32: COMPUTE_AVG_POWER(int32_t, wav, power_in); break;
+        default: return;
+    }
+
     if(wav->num_channels == 1){
         switch (wav->bit_depth) {
             case 8:  PROCESS_BUFFER_MONO(uint8_t,  wav, biquad); break;
@@ -62,7 +103,20 @@ void apply_biquad(wav_t* wav, biquad_t* biquad) {
         }
     }
 
-    else{
-        return;
+    double power_out = 0.0;
+    switch (wav->bit_depth) {
+        case 8:  COMPUTE_AVG_POWER(uint8_t, wav, power_out); break;
+        case 16: COMPUTE_AVG_POWER(int16_t, wav, power_out); break;
+        case 32: COMPUTE_AVG_POWER(int32_t, wav, power_out); break;
+        default: return;
+    }
+    if (power_out > 1e-12 && power_in > 1e-12) {
+        double gain = sqrt(power_in / power_out);
+        switch (wav->bit_depth) {
+            case 8:  APPLY_GAIN(uint8_t,  wav, gain, 0, 255); break;
+            case 16: APPLY_GAIN(int16_t, wav, gain, INT16_MIN, INT16_MAX); break;
+            case 32: APPLY_GAIN(int32_t, wav, gain, INT32_MIN, INT32_MAX); break;
+            default: break;
+        }
     }
 }
