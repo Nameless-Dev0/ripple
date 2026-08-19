@@ -12,7 +12,9 @@
 - nava
 
 ## Support
-Only PCM WAV files are supported.   
+Only PCM WAV files are supported.
+Only fixed header WAV files are supported, i.e., no variable length INFO metadata (for now) 
+Note: you can use [link](https://makeaudio.app/remove-wav-metadata) to strip additional tags from the wav file
 
 ## Usage
 ### Volume and Gain
