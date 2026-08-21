@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -fsanitize=address -fno-omit-frame-pointer -O2 -Wall -Werror -Wextra -Iinclude -Iext
+CFLAGS = -g -fsanitize=address -fno-omit-frame-pointer -O2 -Wall -Werror -Wextra -Iinclude -Iext 
 LDFLAGS = -lm -fsanitize=address
 
 SRC_DIR = src
@@ -42,4 +42,3 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf demo/audio/output.wav
