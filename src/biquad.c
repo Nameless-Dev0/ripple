@@ -68,7 +68,7 @@
         }                                                        \
     } while(0)
 
-void apply_biquad(wav_t* wav, biquad_t* biquad) {
+void apply_biquad(wav_t* wav, bq_df_t* biquad) {
     if(!wav || !biquad){
         return;
     }
